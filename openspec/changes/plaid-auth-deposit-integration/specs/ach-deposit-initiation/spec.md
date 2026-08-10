@@ -43,10 +43,22 @@ The system SHALL record every deposit in a subledger keyed on an identifier the 
 - **THEN** the system records a pending subledger entry for that deposit, keyed to the customer's internal id
 - **THEN** the subledger entry does not depend on any freeform memo or description field surviving the ACH network round trip
 
-### Requirement: ACH origination is a defined but unimplemented boundary
-The system SHALL expose deposit initiation through a stable interface for submitting the ACH debit to the sponsor bank, with the actual submission behavior explicitly stubbed pending confirmation of the origination path.
+### Requirement: Deposit origination via Plaid Transfer
+The system SHALL submit deposits through Plaid's Transfer product rather than a self-built ACH origination path.
 
-#### Scenario: Submitting a deposit today
+#### Scenario: Submitting a deposit
 - **WHEN** a deposit passes idempotency, funding-source-status, and account-number-retrieval checks
-- **THEN** the system calls the origination interface with the debit routing number, debit account number, amount, and customer reference
-- **THEN** the stub records that a submission was attempted without completing a real ACH origination, and this behavior is clearly identifiable as a stub rather than a production path
+- **THEN** the system requests a transfer authorization for the debit amount and customer reference
+- **THEN** if the authorization is approved, the system creates the transfer and records the resulting Plaid transfer id on the deposit
+
+#### Scenario: Transfer authorization declined
+- **WHEN** Plaid declines the transfer authorization for a deposit
+- **THEN** the system does not create a transfer
+- **THEN** the deposit is recorded as failed with the decline reason, and no debit is attempted
+
+### Requirement: Settled funds are swept from Plaid's Ledger to the FBO account
+The system SHALL ensure funds collected via Plaid Transfer are withdrawn from the Plaid-held Ledger balance to the FBO omnibus account rather than left indefinitely in Plaid's custody.
+
+#### Scenario: Sweeping a settled transfer
+- **WHEN** a transfer settles and its funds land in the Plaid Ledger balance
+- **THEN** the system withdraws the settled amount from the Ledger to the FBO account at First Montana

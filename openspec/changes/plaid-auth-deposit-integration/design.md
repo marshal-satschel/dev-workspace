@@ -1,19 +1,20 @@
 ## Context
 
-Greenfield standalone service. No existing HTTP framework, persistence layer, secrets infrastructure, or auth system to integrate with yet — this will eventually be called from the Phase 2 wallet app's Private Markets deposit flow, but that integration is out of scope here (see proposal.md - Impact). Plaid's role is verification-only (`/auth/get`); money movement is a separate, partially-unconfirmed integration with our sponsor bank, First Montana.
+Greenfield standalone service. No existing HTTP framework, persistence layer, secrets infrastructure, or auth system to integrate with yet — this will eventually be called from the Phase 2 wallet app's Private Markets deposit flow, but that integration is out of scope here (see proposal.md - Impact).
+
+**Revised 2026-08-10**: money movement is no longer a separate, First-Montana-originated integration. Plaid **Transfer** now originates the ACH debit directly; settled funds land in a Plaid-owned Ledger balance and are swept to our FBO account at First Montana. `/auth/get` is still used to confirm real ACH numbers exist before persisting a funding source, but it is no longer the only Plaid product in play — see proposal.md's "Why" for the full rationale on why the original Auth-only decision was superseded.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - A working, testable backend against Plaid sandbox for all four capabilities in specs/.
-- A clean seam between "verified account numbers" (Plaid) and "money movement" (First Montana), so the unconfirmed piece doesn't block everything else.
+- A clean integration with Plaid Transfer for deposit origination, plus a defined sweep step from Plaid's Ledger to our FBO account at First Montana.
 - Encryption and secret-handling that meets the spec's constraints today, with an explicit, narrow point to swap in real KMS later.
 
 **Non-Goals:**
-- Real ACH origination to First Montana (stubbed; see Open Questions).
 - Real customer authentication (stubbed via a header-based placeholder middleware).
 - Any frontend or Plaid Link UI — this service returns tokens only.
-- Background job infrastructure — consent-expiry checks are reactive (at deposit time and via webhook), not a scheduled sweep.
+- Background job infrastructure — consent-expiry checks are reactive (at deposit time and via webhook), not a scheduled sweep; Ledger-to-FBO sweeps may need one later (see Open Questions).
 - Per-customer virtual account numbers — an extension point is left in the subledger design, not implemented.
 
 ## Decisions
@@ -33,8 +34,11 @@ Plaid signs webhooks with a JWT in the `Plaid-Verification` header, verified aga
 ### Subledger: keyed on customer id, with a virtual-account extension point
 Deposits are recorded against `customer_ref` (our internal customer id) rather than any ACH-network-supplied field. The `deposits` table includes a nullable `virtual_account_ref` column, unused today, as the named extension point if First Montana turns out to support per-customer virtual account numbers — the proposal explicitly asks for this seam to exist even though it isn't implemented.
 
-### AchOriginator: interface + stub, isolated to one module
-`AchOriginator.submitDebit({ debitRouting, debitAccount, amount, customerRef })` is the only surface the deposit service calls. The stub implementation returns a synthetic pending result and logs clearly that no real origination occurred. **Why here specifically**: this is the one piece explicitly not specified by the user pending bank-team confirmation — isolating it to a single swappable module means every other capability (linking, webhooks, reauth, idempotency, subledger) is fully real and testable without waiting on that confirmation.
+### Deposit origination: Plaid Transfer directly, no stub
+`/transfer/authorization/create` followed by `/transfer/create` is the origination call — no `AchOriginator` interface or stub is needed anymore. **Why the reversal**: the original design isolated origination behind a stub because the First Montana origination path was unconfirmed pending the banking team. Plaid Transfer removes that unknown — Plaid originates the debit and returns real state (authorization decision, transfer status) — so there's nothing left to stub. **New unknown introduced instead**: Plaid's own originator-approval process ([LIQ2-164](https://linear.app/satschel/issue/LIQ2-164)) and sandbox integration ([LIQ2-162](https://linear.app/satschel/issue/LIQ2-162)) gate when this can run against real accounts — tracked as ordinary external-dependency lead time, not a design gap.
+
+### Ledger sweep: Plaid holds funds until withdrawn
+Plaid Transfer settles debits into a Plaid-owned Ledger balance (`/transfer/ledger/deposit` conceptually happens on Plaid's side as the debit settles); funds must be explicitly withdrawn (`/transfer/ledger/withdraw`) to move them to our own bank account — the FBO omnibus account at First Montana. **Why accepted despite the original objection**: this is precisely the "Plaid ledger/hold period" the original proposal avoided by self-originating. It's now accepted because Plaid Transfer removes the need to build and maintain ACH origination ourselves. **Open risk**: sweep timing/frequency is not yet defined — see Open Questions.
 
 ### Auth: placeholder header middleware
 A middleware reads a customer id from a header (e.g. `x-customer-id`) and attaches it to the request. **Why**: no real auth system exists in this standalone context, and inventing one is out of scope — the eventual integration point (Phase 2 wallet) already has its own auth, which this service will need to trust or validate against once wired in. This is a clearly marked stand-in, not a security boundary.
@@ -44,7 +48,8 @@ A middleware reads a customer id from a header (e.g. `x-customer-id`) and attach
 - **[Risk]** Local envelope encryption's master key is only as protected as its env var → **Mitigation**: documented in README as explicitly provisional; `EnvelopeEncryption` interface isolates the swap to one module when real KMS is available.
 - **[Risk]** Placeholder auth middleware could be mistaken for a real security boundary if this code is copied elsewhere → **Mitigation**: named and commented explicitly as a placeholder; README calls it out under constraints.
 - **[Risk]** Reactive-only consent-expiry checking means an expired funding source is only caught when a deposit is attempted or a webhook happens to arrive, not proactively → **Mitigation**: acceptable for a prototype without job infrastructure; noted in README as a natural follow-up once one exists.
-- **[Risk]** `AchOriginator` stub means step 3 (deposit initiation) cannot be exercised end-to-end against a real bank → **Mitigation**: everything up to and including the origination call is real and tested; the interface boundary is the intentional, visible edge of what's confirmed.
+- **[Risk]** Plaid Transfer requires a Custom plan with a 12-month minimum contract and originator approval before production — end-to-end testing against real accounts is blocked until [LIQ2-164](https://linear.app/satschel/issue/LIQ2-164) lands → **Mitigation**: sandbox integration ([LIQ2-162](https://linear.app/satschel/issue/LIQ2-162)) can proceed immediately and covers everything except the production-access gate itself.
+- **[Risk]** Funds settle into a Plaid-owned Ledger balance before reaching our FBO account — an unswept Ledger balance is Liquidity's money sitting outside our own bank, with sweep timing not yet defined → **Mitigation**: tracked explicitly as an Open Question below; needs a decision before this ships to production.
 
 ## Migration Plan
 
@@ -52,4 +57,6 @@ Two migrations via `node-pg-migrate`: `funding_sources` and `deposits` (which in
 
 ## Open Questions
 
-- The actual First Montana origination call (protocol, auth, request/response shape) is pending confirmation from the banking team — tracked via the `AchOriginator` stub, not resolved here. Does not change any spec, approach, or task in this change; swapping the stub for a real implementation is future work once confirmed.
+- **Ledger sweep cadence**: how often (or on what trigger) do we call `/transfer/ledger/withdraw` to move settled funds from Plaid's Ledger to the FBO account at First Montana? Immediately per-transfer, or batched? Not yet decided.
+- **Originator approval timeline**: [LIQ2-164](https://linear.app/satschel/issue/LIQ2-164) (Plaid Transfer production access, Marshal Tavakar) is in flight; production deposits are blocked until it clears.
+- **Sandbox integration**: [LIQ2-162](https://linear.app/satschel/issue/LIQ2-162) (Akhil Bharti) — starting point before production access exists.

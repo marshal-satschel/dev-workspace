@@ -39,10 +39,11 @@
 - [ ] 6.2 Reject deposit requests missing an idempotency key
 - [ ] 6.3 `POST /api/deposits`: look up funding source, reject if `requires_reauth`
 - [ ] 6.4 Decrypt access token, call `/auth/get` for current routing/account numbers (never read from storage)
-- [ ] 6.5 Implement `AchOriginator` interface + stubbed implementation (`submitDebit`); log clearly that this is a stub, not a real submission
+- [ ] 6.5 Call `/transfer/authorization/create`, then `/transfer/create` if approved; on decline, record the deposit as failed with the decline reason (no `AchOriginator` stub needed — Plaid originates the debit)
 - [ ] 6.6 Record subledger entry keyed on `customer_ref`, not on any ACH memo/description field
-- [ ] 6.7 Store the idempotency key → deposit response mapping after a successful (stubbed) submission
+- [ ] 6.7 Store the idempotency key → deposit response mapping after a successful submission
 - [ ] 6.8 Return deposit id and status
+- [ ] 6.9 Implement Ledger sweep: `/transfer/ledger/withdraw` to move settled funds to the FBO account at First Montana (cadence TBD — see design.md Open Questions)
 
 ## 7. Webhook Handling
 
@@ -72,5 +73,6 @@
 
 - [ ] 10.1 README: required environment variables, with a one-line description of each
 - [ ] 10.2 README: sandbox end-to-end walkthrough (create sandbox public token → exchange → deposit → inspect subledger row)
-- [ ] 10.3 README: explicit callout that `AchOriginator` is stubbed pending bank-team confirmation, and where to swap in the real implementation
+- [ ] 10.3 README: explicit callout that production deposits are blocked on Plaid Transfer originator approval (LIQ2-164) and the Custom-plan/12-month-contract requirement — sandbox (LIQ2-162) is fully testable today
 - [ ] 10.4 README: explicit callout that encryption is local envelope encryption, not a real KMS, with the swap point named
+- [ ] 10.5 README: explicit callout that settled funds sit in Plaid's Ledger balance until swept to the FBO account, and that sweep cadence is not yet decided (design.md Open Questions)
