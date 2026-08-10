@@ -19,3 +19,13 @@
 - [ ] 4.2 Order cancellation — on-chain — LIQ2-160
 - [ ] 4.3 Order execution & settlement — private assets — LIQ2-158
 - [ ] 4.4 Order execution & settlement — private secondaries — LIQ2-159
+
+## 5. Liquidity Crypto Wallet (blocked on LIQ2-73)
+
+- [ ] 5.1 Deposit flow matching Alpaca's existing crypto deposit process — LIQ2-161
+- [ ] 5.2 Whitelisted withdrawal flow matching Alpaca's existing process — LIQ2-161
+- [ ] 5.3 Transfer pipeline — BTC — LIQ2-161
+- [ ] 5.4 Transfer pipeline — ETH — LIQ2-161
+- [ ] 5.5 Transfer pipeline — USDC — LIQ2-161
+- [ ] 5.6 Transfer pipeline — USDT — LIQ2-161
+- [ ] 5.7 Transfer pipeline — SOL — LIQ2-161
