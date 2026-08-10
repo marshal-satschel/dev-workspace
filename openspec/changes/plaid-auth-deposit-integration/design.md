@@ -50,6 +50,7 @@ A middleware reads a customer id from a header (e.g. `x-customer-id`) and attach
 - **[Risk]** Reactive-only consent-expiry checking means an expired funding source is only caught when a deposit is attempted or a webhook happens to arrive, not proactively → **Mitigation**: acceptable for a prototype without job infrastructure; noted in README as a natural follow-up once one exists.
 - **[Risk]** Plaid Transfer requires a Custom plan with a 12-month minimum contract and originator approval before production — end-to-end testing against real accounts is blocked until [LIQ2-164](https://linear.app/satschel/issue/LIQ2-164) lands → **Mitigation**: sandbox integration ([LIQ2-162](https://linear.app/satschel/issue/LIQ2-162)) can proceed immediately and covers everything except the production-access gate itself.
 - **[Risk]** Funds settle into a Plaid-owned Ledger balance before reaching our FBO account — an unswept Ledger balance is Liquidity's money sitting outside our own bank, with sweep timing not yet defined → **Mitigation**: tracked explicitly as an Open Question below; needs a decision before this ships to production.
+- **[Risk — highest priority]** Plaid's own documentation excludes marketplaces and money-transfer apps from Transfer; Liquidity pools deposits into a single omnibus account with internal ownership tracking, which reads as structurally similar to that exclusion. **Eligibility has not been asked, let alone confirmed.** → **Mitigation**: none yet — this is not a technical risk with a workaround, it's a binary "Plaid says yes or the entire Option 2 direction collapses back to Option 1." Must be resolved before investing further in this being the production path.
 
 ## Migration Plan
 
@@ -57,6 +58,9 @@ Two migrations via `node-pg-migrate`: `funding_sources` and `deposits` (which in
 
 ## Open Questions
 
+- **Plaid Transfer eligibility (blocking, ask first)**: does Liquidity qualify for Transfer given the omnibus-pooling model, or does Plaid's marketplace/money-transfer-app exclusion apply to us? Not yet asked. If the answer is no, this entire change reverts to the original Option 1 design (Auth-only + First Montana origination) — tracked as the fallback, not deleted.
 - **Ledger sweep cadence**: how often (or on what trigger) do we call `/transfer/ledger/withdraw` to move settled funds from Plaid's Ledger to the FBO account at First Montana? Immediately per-transfer, or batched? Not yet decided.
-- **Originator approval timeline**: [LIQ2-164](https://linear.app/satschel/issue/LIQ2-164) (Plaid Transfer production access, Marshal Tavakar) is in flight; production deposits are blocked until it clears.
-- **Sandbox integration**: [LIQ2-162](https://linear.app/satschel/issue/LIQ2-162) (Akhil Bharti) — starting point before production access exists.
+- **Originator approval timeline**: [LIQ2-164](https://linear.app/satschel/issue/LIQ2-164) (Plaid Transfer production access, Marshal Tavakar) is in flight; production deposits are blocked until it clears. Eligibility (above) should be confirmed before this goes further.
+- **Sandbox integration**: [LIQ2-162](https://linear.app/satschel/issue/LIQ2-162) (Akhil Bharti) — starting point before production access exists; unaffected by the eligibility question since sandbox doesn't require the same approval.
+- **First Montana receiving-side requirements**: submission format, daily deadlines, and whether First Montana can issue per-customer reference numbers for the swept funds — not yet asked (this question applies under either option).
+- **Legal counsel — customer authorization wording**: exact language the customer must agree to before a debit is pulled. Needed under either option; not yet drafted.

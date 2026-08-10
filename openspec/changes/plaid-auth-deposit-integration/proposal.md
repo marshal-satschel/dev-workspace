@@ -2,11 +2,19 @@
 
 Customers need a way to link an external bank account and fund their Liquidity wallet.
 
-**Revision (2026-08-10): superseded the original Auth-only decision.** This proposal originally used Plaid `/auth/get` for verification only, with First Montana originating the ACH debit directly, explicitly ruling out Plaid Transfer ("would duplicate the First Montana origination relationship we already pay for and add Plaid's ledger/hold period on top of it"). Per direction on [LIQ2-97](https://linear.app/satschel/issue/LIQ2-97), that decision is now reversed: Liquidity will use **Plaid Transfer** directly rather than self-originating through First Montana. This is a real trade-off, not a free upgrade — documented in full under Decisions in design.md — and it is taken deliberately:
+**Decision record (2026-08-10): Option 2 — Plaid-Led Deposits (Plaid Transfer), selected.** Internally this was scoped as two options ("How Customer Deposits Will Work: Two Options" — LIQ2 cross-functional review):
 
-- Plaid Transfer holds settled funds in a Plaid-owned **Ledger balance** before they are swept to our own bank account. This is exactly the "Plaid ledger/hold period" the original decision avoided; it is now accepted in exchange for not having to build and maintain our own ACH origination path.
-- Transfer requires a **Custom plan with a 12-month minimum contract** (not available pay-as-you-go) and a separate **originator approval** (Transfer Application/Questionnaire, ACH use-case and processing-history review) before production access — tracked as [LIQ2-164](https://linear.app/satschel/issue/LIQ2-164).
+- **Option 1 (Bank-Led)**: Plaid verifies the account only; First Montana originates the ACH debit directly into the FBO account. This was the original design in this proposal.
+- **Option 2 (Plaid-Led / Plaid Transfer)**: Plaid both verifies *and* pulls the funds into a Plaid-operated holding account (the Ledger balance), then forwards them to our FBO account at First Montana. **This is the selected option**, per direction on [LIQ2-97](https://linear.app/satschel/issue/LIQ2-97).
+
+The tradeoff, stated plainly: Option 1 means First Montana is the only party ever holding customer funds, at the cost of Liquidity building and maintaining the ACH origination machinery (submission format, daily deadlines, testing, returns/NSF risk) ourselves. Option 2 means Plaid builds and holds that machinery — including fraud-scoring, refunds, repeat deposits, and automatic use of faster payment rails — at the cost of funds sitting with Plaid first, an extra hop before money is usable, paying both Plaid and First Montana, and record-keeping that has to reconcile against Plaid's Ledger rather than bank records alone. Full comparison lives in the source document; the summary above is preserved here as the record of *why* Option 2 was chosen, not just *that* it was.
+
+**Unresolved risk carried over from that document, not yet closed out**: Plaid's own documentation states Transfer does not support marketplaces or money-transfer apps, and Liquidity pools customer deposits into a single omnibus account with internal ownership tracking — structurally similar to what Plaid excludes. **Liquidity has not yet asked Plaid whether it qualifies for Transfer at all.** Until that's confirmed, production build-out (LIQ2-164) is at risk of being blocked entirely, not just delayed. This is the single highest-priority open question in this change — see design.md Open Questions.
+
+- Plaid Transfer holds settled funds in a Plaid-owned **Ledger balance** before they are swept to our own bank account — accepted deliberately in exchange for not building ACH origination ourselves.
+- Transfer requires a **Custom plan with a 12-month minimum contract** (not available pay-as-you-go) and a separate **originator approval** (Transfer Application/Questionnaire, ACH use-case and processing-history review, and — per the qualification risk above — a marketplace/money-transfer-app eligibility check) before production access — tracked as [LIQ2-164](https://linear.app/satschel/issue/LIQ2-164).
 - Plaid processor tokens remain ruled out for the same reason as before: Liquidity has no signed partnership with Plaid as a processor destination.
+- Legal counsel still needs to define the exact authorization wording the customer agrees to before a debit is pulled — needed under either option, not yet resolved, and out of scope for this engineering spec to draft.
 
 ## What Changes
 
