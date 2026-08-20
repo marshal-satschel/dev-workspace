@@ -1,11 +1,11 @@
 ## 1. Account Type Selector (done)
 
-- [x] 1.1 Three options: Individual, Entity, Broker — with icons, descriptions, time estimates
+- [x] 1.1 Two options: Individual, Entity — with icons, descriptions, time estimates
 - [x] 1.2 "Not sure which one I am?" expandable guidance
 - [x] 1.3 Greet user by first name
 - [x] 1.4 Individual → existing Tier 1 flow
 - [x] 1.5 Entity → entity onboarding flow
-- [x] 1.6 Broker → broker flow (navigates to /broker-flow-sim from Tier 1)
+- [x] 1.6 Broker option removed from selector (broker sim remains at /broker-flow-sim for reference only)
 
 ## 2. Entity Flow — Consolidated (done)
 
